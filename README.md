@@ -1,2 +1,2 @@
-# Go_Basics_Ref1
+# Go Basics Reference
 Go basics - simple tutorials
