@@ -161,6 +161,7 @@ func main() {
 	r.perimeter() */
 
 	// Methods with non-struct receivers
+	// To use literal types as receivers they must exist in the same package hence -> type myInt int
 	num1 := myInt(5)
 	num2 := myInt(10)
 	sum := num1.add(num2)
