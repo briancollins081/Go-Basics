@@ -1,2 +1,2 @@
 # Go-Basics
-Go basics - simple tutorials references
+Go Lang - basic references
