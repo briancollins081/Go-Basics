@@ -4,19 +4,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
+	"rest-api/handlers"
 )
 
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("Oops! The item you are looking for is not available at the moment!\n"))
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Running API Version 1\n"))
-}
 func main() {
-	http.HandleFunc("/", rootHandler)
+	http.HandleFunc("/", handlers.RootHandler)
+	http.HandleFunc("/users", handlers.UsersRouter)
+	http.HandleFunc("/users/", handlers.UsersRouter)
 	err := http.ListenAndServe("localhost:11111", nil)
 	if err != nil {
 		fmt.Println(err)
