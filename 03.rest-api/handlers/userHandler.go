@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"rest-api/user"
 
+	"github.com/asdine/storm/v3"
 	"gopkg.in/mgo.v2/bson"
 )
 
@@ -32,7 +33,10 @@ func usersGetAll(w http.ResponseWriter, r *http.Request) {
 		postError(w, http.StatusInternalServerError)
 		return
 	}
-
+	if r.Method == http.MethodHead {
+		postBodyResponse(w, http.StatusOK, jsonResponse{})
+		return
+	}
 	postBodyResponse(w, http.StatusOK, jsonResponse{"users": users})
 }
 
@@ -55,4 +59,83 @@ func usersPostOne(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Location", "/users/"+u.ID.Hex())
 	w.WriteHeader(http.StatusCreated)
+}
+
+func usersGetOne(w http.ResponseWriter, r *http.Request, id bson.ObjectId) {
+	u, err := user.One(id)
+	if err != nil {
+		if err == storm.ErrNotFound {
+			postError(w, http.StatusNotFound)
+			return
+		}
+		postError(w, http.StatusInternalServerError)
+		return
+	}
+	if r.Method == http.MethodHead {
+		postBodyResponse(w, http.StatusOK, jsonResponse{})
+		return
+	}
+	postBodyResponse(w, http.StatusOK, jsonResponse{"user": u})
+}
+
+func usersPutOne(w http.ResponseWriter, r *http.Request, id bson.ObjectId) {
+	u := new(user.User)
+	err := bodyToUser(r, u)
+	if err != nil {
+		postError(w, http.StatusBadRequest)
+		return
+	}
+	u.ID = id
+	err = u.Save()
+	if err != nil {
+		if err == user.ErrorRecordInvalid {
+			postError(w, http.StatusBadRequest)
+		} else {
+			postError(w, http.StatusInternalServerError)
+		}
+		return
+	}
+	postBodyResponse(w, http.StatusOK, jsonResponse{"user": u})
+}
+
+func usersPatchOne(w http.ResponseWriter, r *http.Request, id bson.ObjectId) {
+	u, err := user.One(id)
+	if err != nil {
+		if err == storm.ErrNotFound {
+			postError(w, http.StatusNotFound)
+			return
+		}
+		postError(w, http.StatusInternalServerError)
+		return
+	}
+	err = bodyToUser(r, u)
+	if err != nil {
+		postError(w, http.StatusBadRequest)
+		return
+	}
+	u.ID = id
+	err = u.Save()
+	if err != nil {
+		if err == user.ErrorRecordInvalid {
+			postError(w, http.StatusBadRequest)
+		} else {
+			postError(w, http.StatusInternalServerError)
+		}
+		return
+	}
+	postBodyResponse(w, http.StatusOK, jsonResponse{"user": u})
+}
+
+func usersDeleteOne(w http.ResponseWriter, _ *http.Request, id bson.ObjectId) {
+	err := user.Delete(id)
+	if err != nil {
+		if err == storm.ErrNotFound {
+			postError(w, http.StatusNotFound)
+			return
+		}
+		postError(w, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+
 }
