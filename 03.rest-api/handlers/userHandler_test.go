@@ -84,6 +84,7 @@ func TestBodyToUser(t *testing.T) {
 			}
 			continue
 		}
+
 		if err != nil {
 			t.Errorf("Unexpected error %s", err)
 			continue
