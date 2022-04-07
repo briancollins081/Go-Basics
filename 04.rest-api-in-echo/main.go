@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/subtle"
 	"github.com/asdine/storm/v3"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"gopkg.in/mgo.v2/bson"
 	"net/http"
 	"rest-api-in-echo/cache"
@@ -10,6 +12,22 @@ import (
 
 	"strings"
 )
+
+func serveCache(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if cache.Serve(c.Response(), c.Request()) {
+			return nil
+		}
+		return next(c)
+	}
+}
+
+func cacheResponse(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		c.Response().Writer = cache.NewWriter(c.Response().Writer, c.Request())
+		return next(c)
+	}
+}
 
 type jsonResponse map[string]interface{}
 
@@ -26,9 +44,6 @@ func userOptions(c echo.Context) error {
 }
 
 func usersGetAll(c echo.Context) error {
-	if cache.Serve(c.Response(), c.Request()) {
-		return nil
-	}
 	users, err := user.All()
 
 	if err != nil {
@@ -37,7 +52,6 @@ func usersGetAll(c echo.Context) error {
 	if c.Request().Method == http.MethodHead {
 		return c.NoContent(http.StatusOK)
 	}
-	c.Response().Writer = cache.NewWriter(c.Response().Writer, c.Request())
 	return c.JSON(http.StatusOK, jsonResponse{"users": users})
 }
 
@@ -81,7 +95,6 @@ func usersGetOne(c echo.Context) error {
 	if c.Request().Method == http.MethodHead {
 		return c.NoContent(http.StatusOK)
 	}
-	c.Response().Writer = cache.NewWriter(c.Response().Writer, c.Request())
 	return c.JSON(http.StatusOK, jsonResponse{"user": u})
 }
 
@@ -105,7 +118,6 @@ func usersPutOne(c echo.Context) error {
 		}
 	}
 	cache.Drop("/users")
-	c.Response().Writer = cache.NewWriter(c.Response().Writer, c.Request())
 	return c.JSON(http.StatusOK, jsonResponse{"user": u})
 }
 
@@ -136,7 +148,6 @@ func usersPatchOne(c echo.Context) error {
 		}
 	}
 	cache.Drop("/users")
-	c.Response().Writer = cache.NewWriter(c.Response().Writer, c.Request())
 	return c.JSON(http.StatusOK, jsonResponse{"user": u})
 }
 
@@ -158,29 +169,46 @@ func usersDeleteOne(c echo.Context) error {
 	return nil
 }
 
+func auth(username, password string, c echo.Context) (bool, error) {
+	// Be careful to use constant time comparison to prevent timing attacks
+	if subtle.ConstantTimeCompare([]byte(username), []byte("joe")) == 1 &&
+		subtle.ConstantTimeCompare([]byte(password), []byte("secret")) == 1 {
+		return true, nil
+	}
+	return false, nil
+}
+
 func root(ctx echo.Context) error {
 	return ctx.String(http.StatusOK, "API is running v1")
 }
 
 func main() {
 	e := echo.New()
-
+	// Middleware section
+	e.Pre(middleware.RemoveTrailingSlash())
+	e.Use(middleware.Recover())
+	e.Use(middleware.Secure())
+	// do a user readable logging using logger middleware
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Format: "${method}, ${uri}, ${status} ${latency_human}\n",
+	}))
+	// Routes and handlers section
 	e.GET("/", root)
 
 	u := e.Group("/users")
 	u.OPTIONS("", usersOptions)
-	u.HEAD("", usersGetAll)
-	u.GET("", usersGetAll)
-	u.POST("", usersPostOne)
+	u.HEAD("", usersGetAll, serveCache)
+	u.GET("", usersGetAll, serveCache, cacheResponse)
+	u.POST("", usersPostOne, middleware.BasicAuth(auth))
 
 	uid := u.Group("/:id")
 
 	uid.OPTIONS("", userOptions)
-	uid.HEAD("", usersGetOne)
-	uid.GET("", usersGetOne)
-	uid.PUT("", usersPutOne)
-	uid.PATCH("", usersPatchOne)
-	uid.DELETE("", usersDeleteOne)
+	uid.HEAD("", usersGetOne, serveCache)
+	uid.GET("", usersGetOne, serveCache, cacheResponse)
+	uid.PUT("", usersPutOne, middleware.BasicAuth(auth), cacheResponse)
+	uid.PATCH("", usersPatchOne, middleware.BasicAuth(auth), cacheResponse)
+	uid.DELETE("", usersDeleteOne, middleware.BasicAuth(auth))
 
-	e.Start("127.0.0.1:12345")
+	e.Logger.Fatal(e.Start("127.0.0.1:12345"))
 }
